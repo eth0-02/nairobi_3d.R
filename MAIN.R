@@ -1,7 +1,17 @@
 # ================================================================
-# 3D City Render with OSM + rayrender
-# Area: Nairobi, Kenya
-# Author: Alfrick Onyinkwa adaptation
+# 🗺️ Nairobi 3D City Renderer (R + rayrender)
+# ------------------------------------------------
+# Code by: Alfrick Onyinkwa
+# Title: Environmental Specialist | GIS & Data Visualization
+# Location: Nairobi, Kenya
+# Email: alfrickonyinkwa@gmail.com
+# Year: 2025
+# ------------------------------------------------
+# Description:
+# This script generates a photorealistic 3D rendering of Nairobi, Kenya,
+# using OpenStreetMap (OSM) data with the rayrender package.
+# It automatically downloads map features, extrudes 3D geometries,
+# and produces a high-quality render (nairobi.png).
 # ================================================================
 
 # ---- Libraries ----
@@ -29,7 +39,7 @@ aoi_m <- sf::st_buffer(ctr_m, radius)
 aoi_wgs <- sf::st_transform(aoi_m, 4326)
 bb <- sf::st_bbox(aoi_wgs)
 
-# ---- Helper to safely query OSM ----
+# ---- Safe OSM query helper (auto-retries multiple servers) ----
 safe_osm_query <- function(qfun) {
   servers <- c(
     "https://overpass-api.de/api/interpreter",
@@ -51,68 +61,44 @@ safe_osm_query <- function(qfun) {
   stop("All Overpass servers unavailable or no internet connection.")
 }
 
-# ---- Get polygons / lines safely ----
+# ---- Polygon & line retrievers ----
 get_polys <- function(q) {
   x <- tryCatch(osmdata::osmdata_sf(q)$osm_polygons, error = function(e) NULL)
-  if (is.null(x)) {
-    sf::st_sf(geometry = sf::st_sfc(crs = 4326))
-  } else {
-    sf::st_make_valid(x)
-  }
+  if (is.null(x)) sf::st_sf(geometry = sf::st_sfc(crs = 4326)) else sf::st_make_valid(x)
 }
 
 get_lines <- function(q) {
   x <- tryCatch(osmdata::osmdata_sf(q)$osm_lines, error = function(e) NULL)
-  if (is.null(x)) {
-    sf::st_sf(geometry = sf::st_sfc(crs = 4326))
-  } else {
-    sf::st_make_valid(x)
-  }
+  if (is.null(x)) sf::st_sf(geometry = sf::st_sfc(crs = 4326)) else sf::st_make_valid(x)
 }
 
-# ---- OSM Pulls ----
+# ---- OSM Data Pull ----
 if (!curl::has_internet()) stop("❌ No internet connection detected.")
 
-bld <- safe_osm_query(function() get_polys(osmdata::opq(bb) |>
-                                            osmdata::add_osm_feature("building")))
+bld <- safe_osm_query(function() get_polys(osmdata::opq(bb) |> osmdata::add_osm_feature("building")))
+landuse <- safe_osm_query(function() get_polys(osmdata::opq(bb) |> osmdata::add_osm_feature("landuse")))
 
-landuse <- safe_osm_query(function() get_polys(osmdata::opq(bb) |>
-                                                osmdata::add_osm_feature("landuse")))
-
-green_cover <- subset(
-  landuse, landuse %in% c("grass", "recreation_ground", "forest", "greenery")
-)
+green_cover <- subset(landuse, landuse %in% c("grass", "recreation_ground", "forest", "greenery"))
 
 parks <- dplyr::bind_rows(
   green_cover,
-  safe_osm_query(function() get_polys(osmdata::opq(bb) |>
-                                        osmdata::add_osm_feature("leisure", "park"))),
-  safe_osm_query(function() get_polys(osmdata::opq(bb) |>
-                                        osmdata::add_osm_feature("natural", c("wood", "scrub"))))
+  safe_osm_query(function() get_polys(osmdata::opq(bb) |> osmdata::add_osm_feature("leisure", "park"))),
+  safe_osm_query(function() get_polys(osmdata::opq(bb) |> osmdata::add_osm_feature("natural", c("wood", "scrub"))))
 )
 
 water <- dplyr::bind_rows(
-  safe_osm_query(function() get_polys(osmdata::opq(bb) |>
-                                        osmdata::add_osm_feature("natural", "water"))),
-  safe_osm_query(function() get_polys(osmdata::opq(bb) |>
-                                        osmdata::add_osm_feature("water", "river")))
+  safe_osm_query(function() get_polys(osmdata::opq(bb) |> osmdata::add_osm_feature("natural", "water"))),
+  safe_osm_query(function() get_polys(osmdata::opq(bb) |> osmdata::add_osm_feature("water", "river")))
 )
 
-roads <- safe_osm_query(function() get_lines(osmdata::opq(bb) |>
-                                              osmdata::add_osm_feature("highway")))
+roads <- safe_osm_query(function() get_lines(osmdata::opq(bb) |> osmdata::add_osm_feature("highway")))
+rails <- safe_osm_query(function() get_lines(osmdata::opq(bb) |> osmdata::add_osm_feature("railway")))
 
-rails <- safe_osm_query(function() get_lines(osmdata::opq(bb) |>
-                                              osmdata::add_osm_feature("railway")))
-
-# ---- Clip & project ----
+# ---- Clip AOI ----
 clip_m <- function(x) {
-  if (is.null(x) || nrow(x) == 0) {
-    return(sf::st_sf(geometry = sf::st_sfc(crs = crs_m)))
-  }
+  if (is.null(x) || nrow(x) == 0) return(sf::st_sf(geometry = sf::st_sfc(crs = crs_m)))
   x <- suppressWarnings(sf::st_intersection(x, aoi_wgs))
-  if (nrow(x) == 0) {
-    return(sf::st_sf(geometry = sf::st_sfc(crs = crs_m)))
-  }
+  if (nrow(x) == 0) return(sf::st_sf(geometry = sf::st_sfc(crs = crs_m)))
   sf::st_transform(x, crs_m)
 }
 
@@ -123,7 +109,7 @@ water <- clip_m(water)
 roads <- clip_m(roads)
 rails <- clip_m(rails)
 
-# ---- Heights & buffers ----
+# ---- Building heights & buffers ----
 if (nrow(bld) > 0) {
   h_raw <- suppressWarnings(as.numeric(gsub(",", ".", bld$height)))
   levraw <- suppressWarnings(as.numeric(gsub(",", ".", bld$`building:levels`)))
@@ -168,7 +154,7 @@ mat_road <- rayrender::diffuse(col_road)
 mat_road_hi <- rayrender::diffuse(col_road_hi)
 mat_water <- rayrender::metal(color = col_water, fuzz = 0.5)
 
-# ---- Scene objects ----
+# ---- Build Scene Objects ----
 objs <- list()
 add_obj <- function(objlist, geom, top, bottom, mat) {
   if (nrow(geom) > 0)
@@ -179,12 +165,11 @@ add_obj <- function(objlist, geom, top, bottom, mat) {
 objs <- add_obj(objs, landuse, 0.5, 0.02, mat_landuse)
 objs <- add_obj(objs, parks, 0.5, 0.02, mat_park)
 objs <- add_obj(objs, water, 0.5, -1, mat_water)
-
 rr <- dplyr::bind_rows(roads_buf, rails_buf)
 objs <- add_obj(objs, rr, 1.0, 0.02, mat_road)
 objs <- add_obj(objs, roads_crown, 1.12, 1.02, mat_road_hi)
 
-# ---- Buildings ----
+# ---- Buildings by height ----
 bin_buildings <- function(bld, use_quantiles = FALSE) {
   bld <- bld[!is.na(bld$h) & is.finite(bld$h) & bld$h > 0, ]
   if (nrow(bld) == 0) return(bld)
@@ -218,19 +203,15 @@ add_buildings <- function(scene, b) {
   scene
 }
 
-# ---- Assemble scene ----
+# ---- Assemble Scene ----
 scene <- objs[[1]]
-if (length(objs) > 1) {
-  for (i in 2:length(objs)) {
-    scene <- rayrender::add_object(scene, objs[[i]])
-  }
-}
+if (length(objs) > 1) for (i in 2:length(objs))
+  scene <- rayrender::add_object(scene, objs[[i]])
 scene <- add_buildings(scene, bld)
 
-# ---- Camera and lighting ----
+# ---- Lighting & Camera ----
 lookfrom <- c(-2000, 2000, -2000)
 lookat <- c(0, 10, 50)
-
 scene <- rayrender::add_object(
   scene,
   rayrender::sphere(
@@ -239,7 +220,7 @@ scene <- rayrender::add_object(
   )
 )
 
-# ---- Render ----
+# ---- Render Output ----
 rayrender::render_scene(
   scene = scene,
   lookfrom = lookfrom,
@@ -258,3 +239,9 @@ rayrender::render_scene(
   interactive = FALSE,
   filename = "nairobi.png"
 )
+
+# ---------------------------------------------------------------
+# ✅ End of Script
+# Output: nairobi.png (rendered 3D map)
+# Author: Alfrick Onyinkwa | Nairobi, Kenya
+# ---------------------------------------------------------------
