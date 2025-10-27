@@ -1,0 +1,35 @@
+# 🗺️ Nairobi 3D City Renderer (R + rayrender)
+
+**Code by Alfrick Onyinkwa**  
+Environmental Specialist | GIS & Data Visualization  
+📍 Nairobi, Kenya  
+📧 alfrickonyinkwa@gmail.com  
+
+---
+
+## 🌆 Overview
+
+This project generates a **photorealistic 3D render** of **Nairobi, Kenya**, using **OpenStreetMap (OSM)** spatial data and the **rayrender** package in R.  
+The script automatically retrieves map features within a 1 km radius around Nairobi’s city center and renders them as 3D objects with realistic lighting and materials.
+
+---
+
+## ⚙️ Features
+
+- 🏙️ 3D Buildings extruded by height  
+- 🌳 Parks, forests, and green areas  
+- 🚗 Roads and railway lines  
+- 💧 Rivers, lakes, and water bodies  
+- ☀️ Photorealistic lighting and shading  
+- 🧠 Automatic fallback to alternate Overpass servers  
+- 📸 High-resolution PNG output  
+
+---
+
+## 📦 Requirements
+
+Install required R packages:
+
+```r
+install.packages("pacman")
+pacman::p_load(osmdata, sf, dplyr, rayrender, curl)
